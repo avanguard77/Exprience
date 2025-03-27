@@ -1,25 +1,44 @@
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 
-public class Player : MonoBehaviour
+public class Player : MonoBehaviour,IGunParent
 {
-    public event EventHandler OnShakinghandAnimation;
     public event EventHandler OnJumpingAnimation;
+    public event EventHandler<OnSlelectedItemEventArgs> OnSlelectedItem;
+
+    public class OnSlelectedItemEventArgs : EventArgs
+    {
+        public GunSpawner Gun;
+    }
+
+
+    public static Player Instance { get; private set; }
 
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private GameInPut gameInPut;
-
+    [SerializeField] private LayerMask WourldLayer;
+    [FormerlySerializedAs("HoldGunPoint")] [SerializeField]private Transform holdGunPoint;
     private bool isWalking;
     private bool isJumping;
     private bool isShakinghand;
-    bool istouchingGround = true;
+    private bool istouchingGround = true;
     private float playerRadius = 1f;
     private float playerHight = 3f;
     private Vector3 lastInteraction;
     private Rigidbody playerRb;
 
+    private GunSpawner SelectedGun;
+    private Gun gun;
+
+    private void Awake()
+    {
+        Instance = this;
+    }
+
     private void Start()
     {
+        
         gameInPut.OnJumping += GameInPutOnOnJumping;
         gameInPut.OnShakinghand += GameInPutOnOnShakinghand;
 
@@ -28,7 +47,14 @@ public class Player : MonoBehaviour
 
     private void GameInPutOnOnShakinghand(object sender, EventArgs e)
     {
-        OnShakinghandAnimation?.Invoke(this, EventArgs.Empty);
+        if (SelectedGun != null)
+        {
+            SelectedGun.Interact(this);
+        }
+        else
+        {
+            Debug.Log(gun.GetGunSo().name);
+        }
     }
 
     private void GameInPutOnOnJumping(object sender, EventArgs e)
@@ -52,10 +78,24 @@ public class Player : MonoBehaviour
             lastInteraction = movementDir;
         }
 
-        float interactionDistance = 2f;
+        float interactionDistance = 2.5f;
         if (Physics.Raycast(transform.position, lastInteraction, out RaycastHit hit, interactionDistance))
         {
-            Debug.Log(hit.transform);
+            if (hit.transform.TryGetComponent(out GunSpawner GunSpawner))
+            {
+                if (SelectedGun != GunSpawner)
+                {
+                    SetOnSlelectedItem(GunSpawner);
+                }
+            }
+            else
+            {
+                SetOnSlelectedItem(null);
+            }
+        }
+        else
+        {
+            SetOnSlelectedItem(null);
         }
     }
 
@@ -68,27 +108,25 @@ public class Player : MonoBehaviour
         float movementDistance = moveSpeed * Time.deltaTime;
 
         bool canMove = !Physics.CapsuleCast(transform.position, transform.position + Vector3.up * playerHight,
-            playerRadius, movementDir, movementDistance);
-        
+            playerRadius, movementDir, movementDistance, WourldLayer);
+
 
         if (!canMove)
         {
-            
             Vector3 movementDirX = new Vector3(movementDir.x, 0f, 0);
             canMove = !Physics.CapsuleCast(transform.position, transform.position + Vector3.up * playerHight,
-                playerRadius, movementDirX, movementDistance);
+                playerRadius, movementDirX, movementDistance, WourldLayer);
             if (canMove)
             {
                 //move in x Line
                 movementDir = movementDirX.normalized;
-                Debug.DrawRay(transform.position, movementDir * movementDistance, Color.red);
                 // Debug.DrawRay(transform.position, transform.position + Vector3.up * playerHight, Color.red);
             }
             else
             {
                 Vector3 movementDirZ = new Vector3(0, 0f, movementDir.z);
                 canMove = !Physics.CapsuleCast(transform.position, transform.position + Vector3.up * playerHight,
-                    playerRadius, movementDirZ, movementDistance);
+                    playerRadius, movementDirZ, movementDistance, WourldLayer);
                 if (canMove)
                 {
                     //move in z Line
@@ -116,28 +154,61 @@ public class Player : MonoBehaviour
             playerRb.position = new Vector3(transform.position.x, jumpMax, transform.position.z);
             playerRb.velocity = new Vector3(playerRb.velocity.x, 0, playerRb.velocity.z);
         }
-        
+
         if (Mathf.Abs(transform.position.y) < .7f)
         {
             istouchingGround = true;
         }
 
-        Debug.Log(transform.position);
-
-
         float rotateSpeed = 10f;
         transform.forward = Vector3.Slerp(transform.forward, movementDir, rotateSpeed * Time.deltaTime);
     }
+
     public bool IsWalking()
     {
         return isWalking;
     }
+
     public bool IsJumping()
     {
         return isJumping;
     }
+
     public bool IsShakinghand()
     {
         return isShakinghand;
+    }
+
+    private void SetOnSlelectedItem(GunSpawner SelectedGun)
+    {
+        this.SelectedGun = SelectedGun;
+        OnSlelectedItem?.Invoke(this, new OnSlelectedItemEventArgs
+        {
+            Gun = this.SelectedGun
+        });
+    }
+    public Transform GetFollowSpawnPoint()
+    {
+        return holdGunPoint;
+    }
+
+    public void SetGun(Gun gun)
+    {
+        this.gun = gun;
+    }
+
+    public Gun GetGun()
+    {
+        return gun;
+    }
+
+    public bool HasGun()
+    {
+        return gun != null;
+    }
+
+    public void ClearGun()
+    {
+        gun = null;
     }
 }
